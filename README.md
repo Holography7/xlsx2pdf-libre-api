@@ -47,7 +47,7 @@ services:
 ```
 
 ## Usage
-All you need it's just send bytes to API `http://localhost:8070/convert_to_pdf` and it response you PDF bytes.
+All you need it's just send bytes to API `http://localhost:8000/convert_to_pdf` and it response you PDF bytes.
 
 For example, you could test it by python script `request.py`. Don't forget copy close to it `example.xlsx`.
 
