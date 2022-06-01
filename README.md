@@ -20,7 +20,7 @@ Source code of API maybe coming up on GitHub soon.
 ## Get image
 You could pull image from [Docker Hub](https://hub.docker.com/r/holography/xlsx2pdf-libre-api) or build:
 ```bash
-wget
+git clone https://github.com/Holography7/xlsx2pdf-libre-api.git
 docker build -t xlsx2pdf-libre-api:custom .
 ```
 
