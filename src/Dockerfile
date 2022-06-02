@@ -1,10 +1,10 @@
-FROM python:3.10.4
+FROM python:3.10.4-alpine3.16
 
 WORKDIR /usr/src/api
 
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt update && apt install -y libreoffice --no-install-recommends fonts-liberation2 && rm -rf /var/lib/apt/lists/*
-
+RUN apk add --no-cache build-base ttf-liberation
+RUN fc-cache -fv
+RUN apk add --no-cache libreoffice-calc libreoffice-writer
 RUN pip install --upgrade pip
 RUN pip install fastapi "uvicorn[standard]"
 

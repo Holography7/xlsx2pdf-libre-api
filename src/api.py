@@ -24,6 +24,10 @@ JAVA_WARNING = (
     '/config/javasettings_Linux_*.xml\n'
     'Warning: failed to read path from javaldx\n'
 )
+JAVA_SHORT_WARNING = (
+    'javaldx: Could not find a Java Runtime Environment!\n'
+    'Warning: failed to read path from javaldx\n'
+)
 
 
 def clear_temp_file() -> None:
@@ -34,9 +38,11 @@ def clear_temp_file() -> None:
 
 @app.post('/convert_to_pdf')
 async def convert_to_pdf(request: Request) -> FileResponse:
+    logger.debug('Accepting bytes...')
     global tmp_file
     clear_temp_file()
     data: bytes = await request.body()
+    logger.debug('Converting...')
     with tempfile.NamedTemporaryFile() as temp_xlsx_file:
         temp_xlsx_file.write(data)
         output = subprocess.run([
@@ -49,17 +55,23 @@ async def convert_to_pdf(request: Request) -> FileResponse:
             '--outdir',
             '/tmp',
         ], capture_output=True)
+        logger.debug('Conversion ended. Watching stdout and stderr...')
         err = output.stderr.decode('utf-8')
-        if 'javaldx' in err:
+        if JAVA_WARNING in err:
             for msg in JAVA_WARNING[:-1].split('\n'):
                 logger.warning(msg)
             err = err.replace(JAVA_WARNING, '')
+        if JAVA_SHORT_WARNING in err:
+            for msg in JAVA_SHORT_WARNING[:-1].split('\n'):
+                logger.warning(msg)
+            err = err.replace(JAVA_SHORT_WARNING, '')
         if err:
-            logger.error(err[:-2])
+            logger.error(err[:-1])
             raise HTTPException(status_code=500, detail=err)
         else:
             logger.info(output.stdout.decode('utf-8')[:-1])
     tmp_file = f'{temp_xlsx_file.name}.pdf'
+    logger.debug('Sending PDF back.')
     return FileResponse(
         path=tmp_file,
         filename=tmp_file[5:],
