@@ -50,6 +50,8 @@ All you need it's just send bytes to API `http://localhost:8000/convert_to_pdf` 
 For example, you could test it by python script `request.py`. Don't forget copy close to it `example.xlsx`.
 
 ## Changelog
+### 0.2.1
+- Improved deletion of temporary files
 ### 0.2.0
 - Migrate on base image python:3.10.4-alpine3.16 (image size decreased ~600MB)
 - Now image really using only LibreOffice Calc and LibreOffice Writer (conversion don't work without it)

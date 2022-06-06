@@ -7,7 +7,7 @@ from sys import argv
 
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
 from logger import LogConfig
 
@@ -15,7 +15,6 @@ from logger import LogConfig
 dictConfig(LogConfig().dict())
 logger = logging.getLogger('api')
 app = FastAPI()
-tmp_file = ''
 JAVA_WARNING = (
     'javaldx: Could not find a Java Runtime Environment!\n'
     'Please ensure that a JVM and the package libreoffice-java-common\n'
@@ -30,17 +29,13 @@ JAVA_SHORT_WARNING = (
 )
 
 
-def clear_temp_file() -> None:
-    global tmp_file
-    if tmp_file:
-        os.remove(tmp_file)
-
-
-@app.post('/convert_to_pdf')
-async def convert_to_pdf(request: Request) -> FileResponse:
+@app.post(
+    '/convert_to_pdf',
+    responses={200: {'content': {'application/octet-stream': {}}}},
+    response_class=Response,
+)
+async def convert_to_pdf(request: Request) -> Response:
     logger.debug('Accepting bytes...')
-    global tmp_file
-    clear_temp_file()
     data: bytes = await request.body()
     logger.debug('Converting...')
     with tempfile.NamedTemporaryFile() as temp_xlsx_file:
@@ -70,12 +65,14 @@ async def convert_to_pdf(request: Request) -> FileResponse:
             raise HTTPException(status_code=500, detail=err)
         else:
             logger.info(output.stdout.decode('utf-8')[:-1])
-    tmp_file = f'{temp_xlsx_file.name}.pdf'
+            tmp_file = f'{temp_xlsx_file.name}.pdf'
+    with open(tmp_file, 'rb') as temp_pdf_file:
+        pdf = temp_pdf_file.read()
+    os.remove(tmp_file)
     logger.debug('Sending PDF back.')
-    return FileResponse(
-        path=tmp_file,
-        filename=tmp_file[5:],
-        media_type='application/pdf',
+    return Response(
+        content=pdf,
+        media_type='application/octet-stream',
     )
 
 if __name__ == '__main__':
@@ -89,4 +86,3 @@ if __name__ == '__main__':
         host = argv[1]
         port = int(argv[2])
         uvicorn.run(app, host=host, port=port)
-        clear_temp_file()
