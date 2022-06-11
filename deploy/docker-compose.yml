@@ -1,0 +1,10 @@
+version: "3.7"
+
+services:
+  xlsx2pdf-libre:
+    image: holography/xlsx2pdf-libre-api:0.3.0
+    ports:
+     - 8000:8070
+    environment:
+     - HOST=${HOST}
+     - MARGIN=${MARGIN}

@@ -1,32 +1,21 @@
 import tempfile
-import subprocess
 import os
 from logging.config import dictConfig
 import logging
-from sys import argv
+import argparse
 
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import Response
 
+from constants import CONVERT_PARAMETER, RUN_ARGUMENTS
 from logger import LogConfig
+from libre_office import LibreOfficeApplication
 
 
 dictConfig(LogConfig().dict())
 logger = logging.getLogger('api')
 app = FastAPI()
-JAVA_WARNING = (
-    'javaldx: Could not find a Java Runtime Environment!\n'
-    'Please ensure that a JVM and the package libreoffice-java-common\n'
-    'is installed.\n'
-    'If it is already installed then try removing ~/.config/libreoffice/4/user'
-    '/config/javasettings_Linux_*.xml\n'
-    'Warning: failed to read path from javaldx\n'
-)
-JAVA_SHORT_WARNING = (
-    'javaldx: Could not find a Java Runtime Environment!\n'
-    'Warning: failed to read path from javaldx\n'
-)
 
 
 @app.post(
@@ -39,36 +28,20 @@ async def convert_to_pdf(request: Request) -> Response:
     data: bytes = await request.body()
     logger.debug('Converting...')
     with tempfile.NamedTemporaryFile() as temp_xlsx_file:
+        tmp_file_pdf = f'{temp_xlsx_file.name}.pdf'
         temp_xlsx_file.write(data)
-        output = subprocess.run([
-            'libreoffice',
-            '--calc',
-            '--headless',
-            '--convert-to',
-            'pdf',
-            temp_xlsx_file.name,
-            '--outdir',
-            '/tmp',
-        ], capture_output=True)
-        logger.debug('Conversion ended. Watching stdout and stderr...')
-        err = output.stderr.decode('utf-8')
-        if JAVA_WARNING in err:
-            for msg in JAVA_WARNING[:-1].split('\n'):
-                logger.warning(msg)
-            err = err.replace(JAVA_WARNING, '')
-        if JAVA_SHORT_WARNING in err:
-            for msg in JAVA_SHORT_WARNING[:-1].split('\n'):
-                logger.warning(msg)
-            err = err.replace(JAVA_SHORT_WARNING, '')
-        if err:
-            logger.error(err[:-1])
-            raise HTTPException(status_code=500, detail=err)
-        else:
-            logger.info(output.stdout.decode('utf-8')[:-1])
-            tmp_file = f'{temp_xlsx_file.name}.pdf'
-    with open(tmp_file, 'rb') as temp_pdf_file:
+        try:
+            document = libre_office.open_document(temp_xlsx_file.name)
+            if margin:
+                document.add_margins(99)
+            document.save(tmp_file_pdf, CONVERT_PARAMETER)
+            document.close()
+        except IOError as exc:
+            logger.error(exc)
+            raise HTTPException(exc)
+    with open(tmp_file_pdf, 'rb') as temp_pdf_file:
         pdf = temp_pdf_file.read()
-    os.remove(tmp_file)
+    os.remove(tmp_file_pdf)
     logger.debug('Sending PDF back.')
     return Response(
         content=pdf,
@@ -76,13 +49,17 @@ async def convert_to_pdf(request: Request) -> Response:
     )
 
 if __name__ == '__main__':
-    if len(argv) == 1:
-        logger.error('HOST and PORT not defined!')
-    elif len(argv) == 2 and not argv[1].isdigit():
-        logger.error('PORT not defined!')
-    elif len(argv) == 2 and argv[1].isdigit():
-        logger.error('HOST not defined!')
+    parser = argparse.ArgumentParser()
+    for arg, params in RUN_ARGUMENTS.items():
+        parser.add_argument(arg, **params)
+    args = parser.parse_args()
+    host, port = args.host.split(':') if ':' in args.host else (args.host, 80)
+    if isinstance(port, str):
+        port = int(port)
+    margin = args.add_margins if args.add_margins else 0
+    try:
+        libre_office = LibreOfficeApplication('localhost', 2002)
+    except IOError as libre_exc:
+        raise RuntimeError(f'Failed to connect with LibreOffice: {libre_exc}')
     else:
-        host = argv[1]
-        port = int(argv[2])
         uvicorn.run(app, host=host, port=port)

@@ -1,17 +1,24 @@
-FROM python:3.10.4-alpine3.16
+FROM python:3.10.4
 
 WORKDIR /usr/src/api
 
-RUN apk add --no-cache build-base ttf-liberation
-RUN fc-cache -fv
-RUN apk add --no-cache libreoffice-calc libreoffice-writer
-RUN pip install --upgrade pip
-RUN pip install fastapi "uvicorn[standard]"
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONPATH $PYTHONPATH:/usr/lib/python3/dist-packages/
+ENV MARGIN 0
 
-COPY ./docker-entrypoint.sh .
-RUN chmod +x docker-entrypoint.sh
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt install -y libreoffice-calc --no-install-recommends fonts-liberation2 libreoffice-script-provider-python python3-uno supervisor && rm -rf /var/lib/apt/lists/*
+
+COPY ./requirements.txt .
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
 COPY ./logger.py .
+COPY ./constants.py .
+COPY ./libre_office.py .
 COPY ./api.py .
 
-ENTRYPOINT ./docker-entrypoint.sh
+COPY ./supervisord.conf .
+
+CMD ["supervisord", "-c", "/usr/src/api/supervisord.conf"]
