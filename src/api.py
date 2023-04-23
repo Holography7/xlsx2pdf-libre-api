@@ -1,21 +1,34 @@
-import tempfile
-import os
-from logging.config import dictConfig
-import logging
-import argparse
+import time
 
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import Response
+from fastapi_health import health
 
-from constants import CONVERT_PARAMETER, RUN_ARGUMENTS
-from logger import LogConfig
 from libre_office import LibreOfficeApplication
+from settings import HOST, PORT, DOC_MARGINS
+from logger import logger
 
-
-dictConfig(LogConfig().dict())
-logger = logging.getLogger('api')
 app = FastAPI()
+libre_office = LibreOfficeApplication()
+
+
+def is_connected_with_libre_office(
+        is_connected: bool = Depends(libre_office.check_application_is_runned),
+):
+    message = {'connect_with_libre_office': 'OK' if is_connected else 'Failed'}
+    if is_connected:
+        logger.debug(message)
+    else:
+        logger.error(message)
+    return message
+
+
+app.add_api_route(
+    '/health',
+    health([is_connected_with_libre_office]),
+    methods=['GET', 'HEAD']
+)
 
 
 @app.post(
@@ -24,42 +37,36 @@ app = FastAPI()
     response_class=Response,
 )
 async def convert_to_pdf(request: Request) -> Response:
-    logger.debug('Accepting bytes...')
+    logger.debug('Request accepted.')
     data: bytes = await request.body()
-    logger.debug('Converting...')
-    with tempfile.NamedTemporaryFile() as temp_xlsx_file:
-        tmp_file_pdf = f'{temp_xlsx_file.name}.pdf'
-        temp_xlsx_file.write(data)
-        try:
-            document = libre_office.open_document(temp_xlsx_file.name)
-            if margin:
-                document.add_margins(99)
-            document.save(tmp_file_pdf, CONVERT_PARAMETER)
-            document.close()
-        except IOError as exc:
-            logger.error(exc)
-            raise HTTPException(exc)
-    with open(tmp_file_pdf, 'rb') as temp_pdf_file:
-        pdf = temp_pdf_file.read()
-    os.remove(tmp_file_pdf)
-    logger.debug('Sending PDF back.')
+    logger.debug('Document saved in memory.')
+    try:
+        with libre_office.open_document(file_bytes=data) as document:
+            if DOC_MARGINS:
+                document.add_margins()
+            pdf = document.save()
+    except IOError as exc:
+        logger.error(exc)
+        raise HTTPException(exc)
     return Response(
         content=pdf,
         media_type='application/octet-stream',
     )
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    for arg, params in RUN_ARGUMENTS.items():
-        parser.add_argument(arg, **params)
-    args = parser.parse_args()
-    host, port = args.host.split(':') if ':' in args.host else (args.host, 80)
-    if isinstance(port, str):
-        port = int(port)
-    margin = args.add_margins if args.add_margins else 0
-    try:
-        libre_office = LibreOfficeApplication('localhost', 2002)
-    except IOError as libre_exc:
-        raise RuntimeError(f'Failed to connect with LibreOffice: {libre_exc}')
-    else:
-        uvicorn.run(app, host=host, port=port)
+    for i in range(10):
+        try:
+            libre_office.check_application_is_runned()
+        except ConnectionRefusedError:
+            logger.info(f'Waiting start LibreOffice (tried {i + 1} of 10)...')
+            time.sleep(3)
+        else:
+            try:
+                libre_office.initialize()
+            except IOError as libre_exc:
+                raise RuntimeError(
+                    f'Failed to connect with LibreOffice: {libre_exc}'
+                )
+            else:
+                break
+    uvicorn.run(app, host=HOST, port=PORT)

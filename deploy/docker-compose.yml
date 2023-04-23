@@ -2,9 +2,15 @@ version: "3.7"
 
 services:
   xlsx2pdf-libre:
-    image: holography/xlsx2pdf-libre-api:0.3.0
+    build:
+      context: ../src/
+    image: holography/xlsx2pdf-libre-api:0.4.0
     ports:
-     - 8000:8070
+     - "8070:8070"
     environment:
      - HOST=${HOST}
      - MARGIN=${MARGIN}
+    healthcheck:
+      test: "wget --spider ${HOST}/health"
+      interval: 15s
+      retries: 10

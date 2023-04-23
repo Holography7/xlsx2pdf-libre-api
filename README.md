@@ -21,13 +21,13 @@ You could pull image from [Docker Hub](https://hub.docker.com/r/holography/xlsx2
 ```bash
 git clone https://github.com/Holography7/xlsx2pdf-libre-api.git
 cd xlsx2pdf-libre-api/src
-docker build -t xlsx2pdf-libre-api:custom .
+docker-compose up --build  # you can remove --build flag after first successful run
 ```
 
 ## Configuration
 If you want just to run:
 ```bash
-docker run --env HOST=0.0.0.0:8070 -p 8000:8070 -ti holography/xlsx2pdf-libre-api:0.3.0
+docker run --env HOST=0.0.0.0:8070 -p 8070:8070 -ti holography/xlsx2pdf-libre-api:0.4.0
 ```
 
 Or using `docker-compose`:
@@ -36,29 +36,43 @@ version: "3.7"
 
 services:
   xlsx2pdf-libre:
-    image: holography/xlsx2pdf-libre-api:0.3.0
+    build:
+      context: ../src/
+    image: holography/xlsx2pdf-libre-api:0.4.0
     ports:
-     - 8000:8070
+     - "8070:8070"
     environment:
-     - HOST=0.0.0.0:8070
+     - HOST=${HOST}
+     - MARGIN=${MARGIN}
+    healthcheck:
+      test: "wget --spider ${HOST}/health"
+      interval: 15s
+      retries: 10
 ```
 
 Or, if you downloaded sources:
 ```bash
 cd ../deploy
-docker-compose up
+docker-compose up --build
 ```
 You can add `-d` parameter to `docker-compose up` if you don't want lock your terminal.
+Flag `--build` required only if you run at first time or want to rebuild image.
 
 ### NEW in 0.3.0
 For unknown reasons in LibreOffice inner cell margins less than in MS Excel. If you need them, add `--env MARGIN=99` to `docker run` command, or ` - MARGIN=99` in `environment` section of docker-compose file.
 
 ## Usage
-All you need it's just send bytes to API `http://localhost:8000/convert_to_pdf` and it responds you PDF bytes.
+All you need it's just send bytes to API `http://localhost:8070/convert_to_pdf` and it responds you PDF bytes.
 
-For example, you could test it by python script `request.py`. Don't forget copy close to it `example.xlsx`.
+For example, you could test it by python script `request.py` (you must install requests module with `pip install requests` to use it). Don't forget copy close to it `example.xlsx`.
 
 ## Changelog
+### 0.4.0
+- Changed reading input XLSX file. Before this update it used temporary XLSX file that stores on disk (in `/tmp` directory) before converting. Now LibreOffice Application read XLSX file from memory (RAM) without any temporary files. This change have huge improve for servers with slow HDD.
+- Added handling of exceptions to LibreOffice Application on startup.
+- Replaced `host` and `--add_margins` run arguments to .env as `HOST` and `MARGIN`.
+- Added `build` section to `docker-compose.yml` to build image and run with command `docker-compose --build up`.
+- Added healthcheck.
 ### 0.3.0
 - Unfortunately, this changes forced return to Debian image:
   - Added ability to increase inner cell margins to do PDF file more like from MS Excel.
